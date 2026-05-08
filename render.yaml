@@ -1,0 +1,43 @@
+services:
+  # 1) Python FastAPI ML service
+  - type: web
+    name: crop-ml-api
+    env: python
+    plan: free
+    # Keep ML dependencies on a compatible Python runtime.
+    # (Python 3.14 can break shap/scikit-learn wheels.)
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      # Set in Render dashboard (do NOT commit secrets)
+      - key: DATA_GOV_API_KEY
+        sync: false
+      - key: ASSUMED_YIELD_QUINTAL_PER_ACRE
+        value: "10"
+    buildCommand: pip install -r backend/ml_service/requirements.txt
+    startCommand: uvicorn backend.ml_service.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+
+  # 2) Node.js web + API gateway (serves frontend and proxies /predict to Python)
+  - type: web
+    name: crop-web
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node backend/web_server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: DATABASE_URL
+        sync: false
+      # Public URL of the ML service (same workspace). Override in Dashboard if needed.
+      - key: PYTHON_API_URL
+        fromService:
+          name: crop-ml-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
